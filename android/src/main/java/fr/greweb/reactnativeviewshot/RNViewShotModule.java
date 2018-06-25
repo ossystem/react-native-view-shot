@@ -84,7 +84,20 @@ public class RNViewShotModule extends ReactContextBaseJavaModule {
         try {
             File file = null;
             if ("tmpfile".equals(result)) {
-              file = createTempFile(getReactApplicationContext(), format);
+                if (options.hasKey("path")) {
+                    file = new File(options.getString("path"));
+                    //file.mkdirs();
+                    if (!file.exists()) {
+                        try {
+                            file.createNewFile();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+                else{
+                    file = createTempFile(getReactApplicationContext(), format);
+                }
             }
             UIManagerModule uiManager = this.reactContext.getNativeModule(UIManagerModule.class);
             uiManager.addUIBlock(new ViewShot(tag, format, compressFormat, quality, width, height, file, result, snapshotContentContainer,reactContext, getCurrentActivity(), promise));

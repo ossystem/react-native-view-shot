@@ -25,6 +25,11 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import android.util.Log;
+import java.lang.reflect.Method;
+import android.view.SurfaceView;
+import java.lang.reflect.InvocationTargetException;
+import android.graphics.BitmapFactory;
 
 /**
  * Snapshot utility class allow to screenshot a view.
@@ -45,6 +50,7 @@ public class ViewShot implements UIBlock {
     private Boolean snapshotContentContainer;
     private  ReactApplicationContext reactContext;
     private Activity currentActivity;
+    private com.twilio.video.CameraCapturer.PictureListener photographer = null;
 
     public ViewShot(
             int tag,
@@ -71,6 +77,45 @@ public class ViewShot implements UIBlock {
         this.reactContext = reactContext;
         this.currentActivity = currentActivity;
         this.promise = promise;
+
+        this.photographer =  new com.twilio.video.CameraCapturer.PictureListener() {
+            @Override
+            public void onShutter() {
+            }
+            @Override
+            public void onPictureTaken(byte[] bytes) {
+                ViewShot.this.onPictureTaken(BitmapFactory.decodeByteArray(bytes, 0, bytes.length));
+
+            }
+        };
+    }
+
+    private void onPictureTaken(Bitmap bitmap){
+        OutputStream os = null;
+        try {
+            if (bitmap != null) {
+                Log.d("RNViewShotHack", "PictureTaken");
+                os = new FileOutputStream(output);
+                bitmap.compress(format, (int) (100.0 * quality), os);
+                String uri = Uri.fromFile(output).toString();
+                promise.resolve(uri);
+
+            } else {
+                Log.d("RNViewShotHack", "Picture Fails");
+                promise.reject(ERROR_UNABLE_TO_SNAPSHOT, "Failed to capture view snapshot");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            promise.reject(ERROR_UNABLE_TO_SNAPSHOT, "Failed to capture view snapshot");
+        } finally {
+            if (os != null) {
+                try {
+                    os.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 
     @Override
@@ -89,6 +134,23 @@ public class ViewShot implements UIBlock {
             return;
         }
         try {
+            String viewClassName = view.getClass().getName();
+            Log.d("RNViewShotHack", "viewClassName = "+viewClassName);
+
+            if (view.getClass().getName().equals("com.twiliorn.library.TwilioVideoPreview")) {
+                promise.reject(ERROR_UNABLE_TO_SNAPSHOT, "TwilioVideoLocalView and TwilioVideoParticipantView is not supported, pass ref of TwilioVideo instead");
+               
+            }
+
+            if (view.getClass().getName().equals("com.twiliorn.library.CustomTwilioVideoView")) {
+                for (Method method : Class.forName(viewClassName).getDeclaredMethods()) {
+                    Log.d("RNViewShotHackMethod", method.getName());
+                    if (method.getName().equals("takeLocalPicture")) {
+                        Log.d("RNViewShotHackMethod Call", method.getName());
+                        method.invoke(view, photographer);
+                    }
+                }
+            } else
             if ("tmpfile".equals(result)) {
                 os = new FileOutputStream(output);
                 captureView(view, os);
